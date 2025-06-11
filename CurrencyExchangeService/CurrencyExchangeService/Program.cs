@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.ServiceModel;
 using System.ServiceModel.Description;
 
@@ -18,6 +19,16 @@ namespace CurrencyExchangeService
             
             try
             {
+                // Set the database path for Entity Framework
+                string appDataPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "App_Data");
+                if (!Directory.Exists(appDataPath))
+                {
+                    Directory.CreateDirectory(appDataPath);
+                }
+                AppDomain.CurrentDomain.SetData("DataDirectory", appDataPath);
+                
+                Console.WriteLine($"Database will be created at: {Path.Combine(appDataPath, "CurrencyExchangeDb.mdf")}");
+                
                 // Create the ServiceHost - configuration is loaded from App.config
                 using (ServiceHost host = new ServiceHost(typeof(CurrencyExchangeService)))
                 {

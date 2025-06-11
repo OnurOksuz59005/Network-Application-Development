@@ -10,3 +10,6 @@ C:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyEx
 C:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyExchangeService\CurrencyExchangeService\obj\Debug\net48\Currency.B8FC4751.Up2Date
 C:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyExchangeService\CurrencyExchangeService\obj\Debug\net48\CurrencyExchangeService.exe
 C:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyExchangeService\CurrencyExchangeService\obj\Debug\net48\CurrencyExchangeService.pdb
+c:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyExchangeService\CurrencyExchangeService\obj\Debug\net48\CurrencyExchangeService.sourcelink.json
+C:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyExchangeService\CurrencyExchangeService\bin\Debug\net48\EntityFramework.SqlServer.dll
+C:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyExchangeService\CurrencyExchangeService\bin\Debug\net48\EntityFramework.dll

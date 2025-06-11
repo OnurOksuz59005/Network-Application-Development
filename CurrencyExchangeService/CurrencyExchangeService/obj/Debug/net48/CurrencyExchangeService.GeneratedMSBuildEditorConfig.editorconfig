@@ -1,6 +1,6 @@
 is_global = true
 build_property.RootNamespace = CurrencyExchangeService
-build_property.ProjectDir = c:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyExchangeService\CurrencyExchangeService\
+build_property.ProjectDir = C:\Users\iniro\Desktop\Vizja Projects\Network Application Development\CurrencyExchangeService\CurrencyExchangeService\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
 build_property.CsWinRTUseWindowsUIXamlProjections = false

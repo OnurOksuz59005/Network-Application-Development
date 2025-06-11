@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.ServiceModel;
+using CurrencyExchangeService.Models;
 
 namespace CurrencyExchangeService
 {
@@ -7,5 +9,11 @@ namespace CurrencyExchangeService
     {
         [OperationContract]
         double GetExchangeRate(string currencyCode);
+        
+        [OperationContract]
+        List<Models.CurrencyInfo> GetAvailableCurrencies();
+        
+        [OperationContract]
+        List<Models.ExchangeRateHistory> GetExchangeRateHistory(string currencyCode, int days);
     }
 }

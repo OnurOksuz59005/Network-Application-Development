@@ -1,19 +1,27 @@
 using System;
-using System.ServiceModel;
-using System.ServiceModel.Channels;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
+using System.ServiceModel;
+using System.Runtime.Serialization;
+using System.ServiceModel.Channels;
 using Newtonsoft.Json;
+using System.Linq;
 
 namespace CurrencyExchangeClient
 {
     // Import the service contract
-    [ServiceContract]
+    [ServiceContract(Namespace = "http://tempuri.org/")]
     public interface ICurrencyExchangeService
     {
         [OperationContract]
         double GetExchangeRate(string currencyCode);
+        
+        [OperationContract]
+        List<Models.CurrencyInfo> GetAvailableCurrencies();
+        
+        [OperationContract]
+        List<Models.ExchangeRateHistory> GetExchangeRateHistory(string currencyCode, int days);
     }
 
     class Program
@@ -80,21 +88,17 @@ namespace CurrencyExchangeClient
             {
                 Console.WriteLine("Connecting to Currency Exchange Service...");
                 
-                // Create TCP binding explicitly
                 NetTcpBinding binding = new NetTcpBinding(SecurityMode.None);
                 binding.MaxReceivedMessageSize = 2000000;
                 binding.OpenTimeout = TimeSpan.FromSeconds(5);
                 binding.ReceiveTimeout = TimeSpan.FromSeconds(10);
                 binding.SendTimeout = TimeSpan.FromSeconds(10);
                 
-                // Create endpoint address - IMPORTANT: Using net.tcp protocol to match NetTcpBinding
                 EndpointAddress endpoint = new EndpointAddress("net.tcp://localhost:8733/CurrencyExchangeService/");
                 
-                // Create channel factory
                 channelFactory = new ChannelFactory<ICurrencyExchangeService>(binding, endpoint);
                 client = channelFactory.CreateChannel();
                 
-                // Enable reliable session behavior for the channel
                 IClientChannel channel = client as IClientChannel;
                 if (channel != null)
                 {
@@ -132,23 +136,46 @@ namespace CurrencyExchangeClient
         {
             while (true)
             {
-                ShowMenu();
-                string input = Console.ReadLine()?.Trim();
-
-                if (string.IsNullOrEmpty(input))
-                    continue;
-
-                if (input.ToLower() == "exit" || input.ToLower() == "q")
-                    break;
-
-                if (input.ToLower() == "list" || input == "?")
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write("\nEnter currency code (or 'list' for available currencies, 'history' for rate history, 'exit' to quit): ");
+                Console.ResetColor();
+                
+                string input = Console.ReadLine().Trim().ToUpper();
+                
+                if (input == "EXIT")
                 {
-                    ShowAvailableCurrencies();
+                    break;
+                }
+                else if (input == "LIST")
+                {
+                    if (!_usingDirectApi)
+                    {
+                        try
+                        {
+                            var currencies = wcfClient.GetAvailableCurrencies();
+                            DisplayAvailableCurrencies(currencies);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"Error getting currencies from service: {ex.Message}");
+                            Console.ResetColor();
+                            ShowAvailableCurrencies(); // Fall back to local list
+                        }
+                    }
+                    else
+                    {
+                        ShowAvailableCurrencies(); // Use local list
+                    }
                     continue;
                 }
-
-                string currencyCode = input.ToUpper();
+                else if (input == "HISTORY")
+                {
+                    GetExchangeRateHistory(wcfClient);
+                    continue;
+                }
                 
+                // Handle currency code input
                 try
                 {
                     double rate;
@@ -156,15 +183,15 @@ namespace CurrencyExchangeClient
                     if (_usingDirectApi)
                     {
                         // Use direct API access
-                        rate = GetExchangeRateFromApi(currencyCode).GetAwaiter().GetResult();
+                        rate = GetExchangeRateFromApi(input).GetAwaiter().GetResult();
                     }
                     else
                     {
                         // Use WCF service
-                        rate = wcfClient.GetExchangeRate(currencyCode);
+                        rate = wcfClient.GetExchangeRate(input);
                     }
                     
-                    DisplayExchangeRate(currencyCode, rate);
+                    DisplayExchangeRate(input, rate);
                 }
                 catch (Exception ex)
                 {
@@ -224,6 +251,209 @@ namespace CurrencyExchangeClient
             Console.WriteLine($"1000 PLN = {1000 / rate:F2} {currencyCode}");
         }
 
+        private static void GetExchangeRateHistory(ICurrencyExchangeService client)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Write("\nEnter currency code for history: ");
+            Console.ResetColor();
+            string currencyCode = Console.ReadLine().Trim().ToUpper();
+            
+            // Validate currency code
+            if (string.IsNullOrEmpty(currencyCode))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("Currency code cannot be empty.");
+                Console.ResetColor();
+                return;
+            }
+            
+            // Check if the user entered "HISTORY" as the currency code
+            if (currencyCode == "HISTORY")
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("'HISTORY' is not a valid currency code. Please enter a valid currency code like EUR, USD, etc.");
+                Console.ResetColor();
+                return;
+            }
+            
+            // Validate that the currency code is a valid ISO currency code (3 letters)
+            if (currencyCode.Length != 3 || !currencyCode.All(char.IsLetter))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("Please enter a valid 3-letter currency code (e.g., EUR, USD, GBP).");
+                Console.ResetColor();
+                return;
+            }
+            
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Write("Enter number of days (1-30): ");
+            Console.ResetColor();
+            
+            if (!int.TryParse(Console.ReadLine().Trim(), out int days) || days < 1 || days > 30)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("Invalid number of days. Please enter a number between 1 and 30.");
+                Console.ResetColor();
+                return;
+            }
+            
+            try
+            {
+                if (_usingDirectApi)
+                {
+                    // Direct API access for history not implemented in this version
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("Exchange rate history is only available when connected to the WCF service.");
+                    Console.ResetColor();
+                    return;
+                }
+                
+                Console.WriteLine($"Requesting exchange rate history for {currencyCode} for {days} days...");
+                
+                List<Models.ExchangeRateHistory> history = null;
+                try 
+                {
+                    IClientChannel channel = client as IClientChannel;
+                    if (channel != null && channel.State != CommunicationState.Opened)
+                    {
+                        Console.WriteLine("Warning: Channel is not in Open state. Current state: " + channel.State);
+                    }
+                    
+                    try
+                    {
+                        var binding = new NetTcpBinding();
+                        binding.MaxReceivedMessageSize = 2147483647; // Max size
+                        binding.ReaderQuotas.MaxArrayLength = 2147483647;
+                        binding.ReaderQuotas.MaxStringContentLength = 2147483647;
+                        binding.ReaderQuotas.MaxBytesPerRead = 2147483647;
+                        binding.ReaderQuotas.MaxDepth = 64;
+                        binding.ReaderQuotas.MaxNameTableCharCount = 2147483647;
+                        
+                        var endpoint = new EndpointAddress("net.tcp://localhost:8733/CurrencyExchangeService/");
+                        var factory = new ChannelFactory<ICurrencyExchangeService>(binding, endpoint);
+                        var freshClient = factory.CreateChannel();
+                        
+                        Console.WriteLine("Created fresh client channel for history request");
+                        
+                        history = freshClient.GetExchangeRateHistory(currencyCode, days);
+                        Console.WriteLine($"Received response from service with {(history != null ? history.Count : 0)} records");
+                        
+                        if (history != null && history.Count > 0)
+                        {
+                            Console.WriteLine("History items received from service:");
+                            foreach (var item in history)
+                            {
+                                Console.WriteLine($"Date={item.Date:yyyy-MM-dd}, Rate={item.Rate}, Table={item.TableNumber}");
+                            }
+                        }
+                        
+                        ((ICommunicationObject)freshClient).Close();
+                    }
+                    catch (FaultException fex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"Service fault in fresh channel: {fex.Message}");
+                        Console.ResetColor();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"Error with fresh channel: {ex.Message}");
+                        if (ex.InnerException != null)
+                        {
+                            Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                        }
+                        Console.ResetColor();
+                    }
+                }
+                catch (FaultException fex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Service fault: {fex.Message}");
+                    Console.ResetColor();
+                    return;
+                }
+                catch (TimeoutException tex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Timeout error: {tex.Message}");
+                    Console.ResetColor();
+                    return;
+                }
+                catch (CommunicationException cex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Communication error: {cex.Message}");
+                    Console.ResetColor();
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Service call error: {ex.Message}");
+                    Console.ResetColor();
+                    return;
+                }
+                
+                if (history == null)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"No historical data returned for {currencyCode} (null response).");
+                    Console.ResetColor();
+                    return;
+                }
+                
+                if (history.Count == 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"No historical data found for {currencyCode} (empty list).");
+                    Console.ResetColor();
+                    return;
+                }
+                
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"\nExchange rate history for {currencyCode} (last {days} days):");
+                Console.ResetColor();
+                
+                Console.WriteLine("{0,-12} {1,-10} {2}", "Date", "Rate (PLN)", "Table");
+                Console.WriteLine(new string('-', 40));
+                
+                List<Models.ExchangeRateHistory> historyItems = new List<Models.ExchangeRateHistory>();
+                
+                foreach (var item in history)
+                {
+                    historyItems.Add(new Models.ExchangeRateHistory
+                    {
+                        Date = item.Date,
+                        Rate = item.Rate,
+                        TableNumber = item.TableNumber
+                    });
+                }
+                
+                historyItems.Sort(delegate(Models.ExchangeRateHistory x, Models.ExchangeRateHistory y) {
+                    return y.Date.CompareTo(x.Date); // Descending order
+                });
+                // Display the sorted history
+                foreach (var rate in historyItems)
+                {
+                    Console.WriteLine("{0,-12} {1,-10:F4} {2}", 
+                        rate.Date.ToString("yyyy-MM-dd"), 
+                        rate.Rate, 
+                        rate.TableNumber);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Error retrieving exchange rate history: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                }
+                Console.ResetColor();
+            }
+        }
+
         private static void PrintHeader()
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
@@ -243,18 +473,42 @@ namespace CurrencyExchangeClient
 
         private static void ShowAvailableCurrencies()
         {
-            Console.WriteLine("\nCommon Currency Codes:\n");
-            Console.WriteLine("┌──────┬────────────────────┐");
-            Console.WriteLine("│ Code │ Currency           │");
-            Console.WriteLine("├──────┼────────────────────┤");
+            Console.WriteLine("\nAvailable currencies:");
+            Console.WriteLine("{0,-5} {1}", "Code", "Name");
+            Console.WriteLine(new string('-', 30));
             
             foreach (var currency in CommonCurrencies)
             {
-                Console.WriteLine($"│ {currency.Key,-4} │ {currency.Value,-18} │");
+                Console.WriteLine("{0,-5} {1}", currency.Key, currency.Value);
             }
             
-            Console.WriteLine("└──────┴────────────────────┘");
-            Console.WriteLine("\nNote: You can query any currency code supported by the NBP API");
+            Console.WriteLine("\nNote: You can also try other ISO 4217 currency codes.");
+            Console.WriteLine("The NBP API supports most major world currencies.");
+        }
+
+        private static void DisplayAvailableCurrencies(List<Models.CurrencyInfo> currencies)
+        {
+            Console.WriteLine("\nAvailable currencies:");
+            Console.WriteLine("{0,-5} {1}", "Code", "Name");
+            Console.WriteLine(new string('-', 30));
+            
+            if (currencies != null && currencies.Any())
+            {
+                // Display currencies from the database
+                foreach (var currency in currencies.OrderBy(c => c.CurrencyCode))
+                {
+                    Console.WriteLine("{0,-5} {1}", currency.CurrencyCode, currency.CurrencyName);
+                }
+                
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("\nCurrency information retrieved from database.");
+                Console.ResetColor();
+            }
+            else
+            {
+                // Fall back to local list
+                ShowAvailableCurrencies();
+            }
         }
     }
     
